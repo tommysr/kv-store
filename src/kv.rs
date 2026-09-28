@@ -13,19 +13,30 @@ use tokio::task::JoinHandle;
 
 use engine::Engine;
 
-/// A message to the storage task. Each variant must carry the sender for its reply.
+/// a message to the storage task. each variant must carry the sender for its reply.
 #[derive(Debug)]
 pub enum Request {
-    /// Store `value` under `key`, overwriting any previous value.
+    /// store `value` under `key`, overwriting any previous value.
     Set {
         key: String,
         value: String,
         reply: oneshot::Sender<()>,
     },
-    /// Read the value under `key`, `None` if the key is missing.
+    /// read the value under `key`, `None` if the key is missing.
     Get {
         key: String,
         reply: oneshot::Sender<Option<String>>,
+    },
+    /// replace the value under an existing `key`, replies `false` if the key is missing.
+    Update {
+        key: String,
+        value: String,
+        reply: oneshot::Sender<bool>,
+    },
+    /// remove `key`, replies `false` if the key is missing.
+    Delete {
+        key: String,
+        reply: oneshot::Sender<bool>,
     },
 }
 
@@ -52,6 +63,17 @@ impl Handle {
     /// Returns the value under `key`, `None` if the key is missing.
     pub async fn get(&self, key: String) -> Result<Option<String>, Error> {
         self.call(|reply| Request::Get { key, reply }).await
+    }
+
+    /// Replaces the value under an existing `key`. Returns `false` if the key is missing.
+    pub async fn update(&self, key: String, value: String) -> Result<bool, Error> {
+        self.call(|reply| Request::Update { key, value, reply })
+            .await
+    }
+
+    /// Removes `key`. Returns `false` if the key is missing.
+    pub async fn delete(&self, key: String) -> Result<bool, Error> {
+        self.call(|reply| Request::Delete { key, reply }).await
     }
 
     /// Sends a request built around a fresh reply channel and waits for the answer.
@@ -88,6 +110,12 @@ async fn run(mut requests: mpsc::Receiver<Request>) {
             }
             Request::Get { key, reply } => {
                 let _ = reply.send(engine.get(&key).map(str::to_owned));
+            }
+            Request::Update { key, value, reply } => {
+                let _ = reply.send(engine.update(&key, value));
+            }
+            Request::Delete { key, reply } => {
+                let _ = reply.send(engine.delete(&key));
             }
         }
     }
