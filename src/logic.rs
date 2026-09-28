@@ -114,7 +114,88 @@ fn ok_or_not_found(found: bool) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
+    /// Runs `command` through a logic task whose storage side is the test itself: `answer`
+    /// gets the one storage request the command causes and replies to it by hand.
+    async fn exchange(command: Command, answer: impl FnOnce(kv::Request)) -> Response {
+        let (kv_tx, mut kv_rx) = mpsc::channel(1);
+        let (logic, _) = spawn(kv::Handle::new(kv_tx), 1);
+        let storage = async move {
+            answer(kv_rx.recv().await.expect("no storage request"));
+        };
+        let both = async { tokio::join!(logic.execute(command), storage) };
+        let (response, ()) = tokio::time::timeout(Duration::from_secs(5), both)
+            .await
+            .expect("exchange did not finish");
+        response.expect("logic task failed")
+    }
+
+    #[tokio::test]
+    async fn set_stores_the_value_reversed() {
+        let command = Command::Set {
+            key: "a".into(),
+            value: "abc".into(),
+        };
+        let response = exchange(command, |request| match request {
+            kv::Request::Set { key, value, reply } => {
+                assert_eq!(key, "a");
+                assert_eq!(value, "cba");
+                reply.send(()).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Ok);
+    }
+
+    #[tokio::test]
+    async fn get_returns_the_stored_value_as_is() {
+        let command = Command::Get { key: "a".into() };
+        let response = exchange(command, |request| match request {
+            kv::Request::Get { key, reply } => {
+                assert_eq!(key, "a");
+                reply.send(Some("cba".into())).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Value("cba".into()));
+    }
+
+    #[tokio::test]
+    async fn update_stores_the_value_reversed_and_maps_a_missing_key() {
+        let command = Command::Update {
+            key: "a".into(),
+            value: "abc".into(),
+        };
+        let response = exchange(command, |request| match request {
+            kv::Request::Update { key, value, reply } => {
+                assert_eq!(key, "a");
+                assert_eq!(value, "cba");
+                reply.send(false).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::NotFound);
+    }
+
+    #[tokio::test]
+    async fn delete_maps_an_existing_key_to_ok() {
+        let command = Command::Delete { key: "a".into() };
+        let response = exchange(command, |request| match request {
+            kv::Request::Delete { key, reply } => {
+                assert_eq!(key, "a");
+                reply.send(true).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Ok);
+    }
 
     #[test]
     fn reverse_ascii() {

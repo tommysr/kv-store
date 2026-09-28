@@ -54,6 +54,13 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// Wraps the sending side of a storage channel, so a unit test can hold the receiver and
+    /// answer requests in place of the storage task.
+    #[cfg(test)]
+    pub(crate) fn new(tx: mpsc::Sender<Request>) -> Self {
+        Self { tx }
+    }
+
     /// Stores `value` under `key`.
     pub async fn set(&self, key: String, value: String) -> Result<(), Error> {
         self.call(|reply| Request::Set { key, value, reply }).await
