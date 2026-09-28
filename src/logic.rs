@@ -1,7 +1,8 @@
 //! Logic task: executes domain commands by turning them into storage requests.
 //!
-//! Owns the domain types [`Command`] and [`Response`]. Awaits each storage reply inline, so
-//! commands are processed one at a time in arrival order.
+//! Owns the domain types [`Command`] and [`Response`] and the domain rule that SET and UPDATE
+//! store the value reversed. Awaits each storage reply inline, so commands are processed one
+//! at a time in arrival order.
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -82,16 +83,24 @@ async fn run(mut requests: mpsc::Receiver<Request>, kv: kv::Handle) -> Result<()
 async fn execute(kv: &kv::Handle, command: Command) -> Result<Response, kv::Error> {
     Ok(match command {
         Command::Set { key, value } => {
-            kv.set(key, value).await?;
+            kv.set(key, reverse(&value)).await?;
             Response::Ok
         }
         Command::Get { key } => match kv.get(key).await? {
             Some(value) => Response::Value(value),
             None => Response::NotFound,
         },
-        Command::Update { key, value } => ok_or_not_found(kv.update(key, value).await?),
+        Command::Update { key, value } => ok_or_not_found(kv.update(key, reverse(&value)).await?),
         Command::Delete { key } => ok_or_not_found(kv.delete(key).await?),
     })
+}
+
+/// Reverses `value` character by character, as SET and UPDATE store it.
+///
+/// A character is a Unicode scalar value (`char`), so a grapheme cluster built from several
+/// scalars, such as an emoji with a skin-tone modifier, comes out with its parts reordered.
+fn reverse(value: &str) -> String {
+    value.chars().rev().collect()
 }
 
 /// Response to a write that applies only to an existing key.
@@ -100,5 +109,35 @@ fn ok_or_not_found(found: bool) -> Response {
         Response::Ok
     } else {
         Response::NotFound
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reverse_ascii() {
+        assert_eq!(reverse("marcin"), "nicram");
+    }
+
+    #[test]
+    fn reverse_empty() {
+        assert_eq!(reverse(""), "");
+    }
+
+    #[test]
+    fn reverse_keeps_multibyte_characters_whole() {
+        assert_eq!(reverse("żółw"), "włóż");
+    }
+
+    #[test]
+    fn reverse_keeps_emoji_whole() {
+        assert_eq!(reverse("a🦀b"), "b🦀a");
+    }
+
+    #[test]
+    fn reverse_reorders_the_parts_of_a_grapheme_cluster() {
+        assert_eq!(reverse("\u{1F44D}\u{1F3FD}"), "\u{1F3FD}\u{1F44D}");
     }
 }

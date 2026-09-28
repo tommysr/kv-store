@@ -34,8 +34,8 @@ async fn session(input: &str) -> String {
 }
 
 #[tokio::test]
-async fn set_then_get_returns_stored_value() {
-    assert_eq!(session("SET a hello\nGET a\n").await, "OK\nhello\n");
+async fn set_then_get_returns_reversed_value() {
+    assert_eq!(session("SET a hello\nGET a\n").await, "OK\nolleh\n");
 }
 
 #[tokio::test]
