@@ -53,16 +53,20 @@ pub fn format_error(error: &ParseError) -> String {
 
 /// Arguments of a command that takes only a key.
 fn key_only(args: &str) -> Result<String, ParseError> {
-    let (key, _) = split_token(args);
-    non_empty(key).ok_or(ParseError::MissingKey)
+    let (key, _) = split_key(args)?;
+    Ok(key)
 }
 
 /// Arguments of a command that takes a key and a value: the value is the rest of the line.
 fn key_and_value(args: &str) -> Result<(String, String), ParseError> {
-    let (key, value) = split_token(args);
-    let key = non_empty(key).ok_or(ParseError::MissingKey)?;
-    let value = non_empty(value).ok_or(ParseError::MissingValue)?;
-    Ok((key, value))
+    let (key, value) = split_key(args)?;
+    Ok((key, non_empty(value).ok_or(ParseError::MissingValue)?))
+}
+
+/// Splits off the key; the rest of the arguments is returned as is.
+fn split_key(args: &str) -> Result<(String, &str), ParseError> {
+    let (key, rest) = split_token(args);
+    Ok((non_empty(key).ok_or(ParseError::MissingKey)?, rest))
 }
 
 /// Splits off the first whitespace-delimited token; the rest is returned trimmed.
