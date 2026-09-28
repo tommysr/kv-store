@@ -197,6 +197,30 @@ mod tests {
         assert_eq!(response, Response::Ok);
     }
 
+    /// A caller that stops waiting (e.g. cancelled by a timeout) must not stop the task.
+    #[tokio::test]
+    async fn keeps_serving_after_a_caller_gives_up() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let (kv, kv_task) = kv::spawn(1);
+            let (logic, task) = spawn(kv, 1);
+
+            let (reply, abandoned) = oneshot::channel();
+            drop(abandoned);
+            let command = Command::Get { key: "a".into() };
+            logic.tx.send(Request { command, reply }).await.unwrap();
+
+            let command = Command::Get { key: "a".into() };
+            let response = logic.execute(command).await.unwrap();
+            assert_eq!(response, Response::NotFound);
+
+            drop(logic);
+            task.await.unwrap().unwrap();
+            kv_task.await.unwrap();
+        })
+        .await
+        .expect("did not finish in time");
+    }
+
     #[test]
     fn reverse_ascii() {
         assert_eq!(reverse("marcin"), "nicram");
