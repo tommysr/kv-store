@@ -46,7 +46,7 @@ async fn a_dead_kv_task_ends_the_session_with_an_error() {
     assert!(within_timeout(kv_task).await.unwrap_err().is_cancelled());
 
     let mut output = Vec::new();
-    let session = cli::run("GET a\nGET a\n".as_bytes(), &mut output, logic);
+    let session = cli::run("GET a\nGET a\n".as_bytes(), &mut output, logic, false);
     let result = within_timeout(session).await;
 
     // The CLI stops at the first command instead of answering `ERR` for every line.

@@ -3,6 +3,7 @@
 
 use anyhow::Context;
 use kv_store::{app, cli};
+use std::io::IsTerminal;
 use tokio::io::{BufReader, stdin, stdout};
 
 #[tokio::main]
@@ -13,7 +14,9 @@ async fn main() -> anyhow::Result<()> {
         kv_task,
     } = app::spawn(app::Config::default());
 
-    let cli_task = tokio::spawn(cli::run(BufReader::new(stdin()), stdout(), logic));
+    // Prompt only a human at a terminal, so piped output stays exactly the answers.
+    let prompt = std::io::stdin().is_terminal();
+    let cli_task = tokio::spawn(cli::run(BufReader::new(stdin()), stdout(), logic, prompt));
 
     // EOF or EXIT ends the CLI; the tasks below then end in cascade as their channels close.
     // Failure spreads upwards: when a task dies, the one above fails. So every task is awaited first,
