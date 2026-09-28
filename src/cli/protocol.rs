@@ -18,23 +18,24 @@ pub enum ParseError {
 /// Parses one input line: the command name, a single-token key, then the value if any.
 pub fn parse(line: &str) -> Result<Command, ParseError> {
     let (name, args) = split_token(line);
-    match name {
+    let command = match name {
         "SET" => {
             let (key, value) = key_and_value(args)?;
-            Ok(Command::Set { key, value })
+            Command::Set { key, value }
         }
-        "GET" => Ok(Command::Get {
+        "GET" => Command::Get {
             key: key_only(args)?,
-        }),
+        },
         "UPDATE" => {
             let (key, value) = key_and_value(args)?;
-            Ok(Command::Update { key, value })
+            Command::Update { key, value }
         }
-        "DELETE" => Ok(Command::Delete {
+        "DELETE" => Command::Delete {
             key: key_only(args)?,
-        }),
-        _ => Err(ParseError::UnknownCommand),
-    }
+        },
+        _ => return Err(ParseError::UnknownCommand),
+    };
+    Ok(command)
 }
 
 /// Formats a response as one output line, without the trailing newline.
