@@ -2,7 +2,6 @@
 //! the formatted responses.
 //!
 //! Generic over the reader and writer, so tests can drive it from memory.
-//!
 
 mod protocol;
 

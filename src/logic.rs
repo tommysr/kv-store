@@ -2,7 +2,6 @@
 //!
 //! Owns the domain types [`Command`] and [`Response`]. Awaits each storage reply inline, so
 //! commands are processed one at a time in arrival order.
-//!
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;

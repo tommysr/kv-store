@@ -4,7 +4,6 @@
 //! operation is atomic without any lock. Replies go back through the `oneshot` sender carried
 //! in the request. The operation semantics live in the synchronous `engine`, this module only
 //! moves requests to it and answers back.
-//!
 
 mod engine;
 
@@ -13,27 +12,27 @@ use tokio::task::JoinHandle;
 
 use engine::Engine;
 
-/// a message to the storage task. each variant must carry the sender for its reply.
+/// A message to the storage task. Each variant must carry the sender for its reply.
 #[derive(Debug)]
 pub enum Request {
-    /// store `value` under `key`, overwriting any previous value.
+    /// Store `value` under `key`, overwriting any previous value.
     Set {
         key: String,
         value: String,
         reply: oneshot::Sender<()>,
     },
-    /// read the value under `key`, `None` if the key is missing.
+    /// Read the value under `key`, `None` if the key is missing.
     Get {
         key: String,
         reply: oneshot::Sender<Option<String>>,
     },
-    /// replace the value under an existing `key`, replies `false` if the key is missing.
+    /// Replace the value under an existing `key`, replies `false` if the key is missing.
     Update {
         key: String,
         value: String,
         reply: oneshot::Sender<bool>,
     },
-    /// remove `key`, replies `false` if the key is missing.
+    /// Remove `key`, replies `false` if the key is missing.
     Delete {
         key: String,
         reply: oneshot::Sender<bool>,
