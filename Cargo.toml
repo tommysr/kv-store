@@ -8,6 +8,7 @@ description = "In-memory key-value store build from tokio tasks, with communicat
 
 [dependencies]
 anyhow = "1.0.104"
+thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "io-util", "io-std"] }
 
 [lints.rust]
@@ -16,3 +17,6 @@ unsafe_code = "forbid"
 [lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["time"] }
