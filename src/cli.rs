@@ -8,6 +8,7 @@ mod protocol;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::logic;
+use protocol::Input;
 
 /// Errors that end a CLI session.
 #[derive(Debug, thiserror::Error)]
@@ -18,7 +19,7 @@ pub enum Error {
     Logic(#[from] logic::Error),
 }
 
-/// Runs a session until the reader reaches EOF, answering each line on `writer`.
+/// Runs a session until `EXIT` or EOF, answering each line on `writer`.
 ///
 /// Invalid input is answered with `ERR <reason>` and the session continues; blank lines get
 /// no answer. Returning drops `logic`, which lets the tasks below shut down.
@@ -30,8 +31,9 @@ where
     let mut lines = reader.lines();
     while let Some(line) = lines.next_line().await? {
         let output = match protocol::parse(&line) {
-            Ok(None) => continue,
-            Ok(Some(command)) => protocol::format(&logic.execute(command).await?),
+            Ok(Input::Blank) => continue,
+            Ok(Input::Exit) => break,
+            Ok(Input::Command(command)) => protocol::format(&logic.execute(command).await?),
             Err(error) => protocol::format_error(&error),
         };
         writer.write_all(output.as_bytes()).await?;
