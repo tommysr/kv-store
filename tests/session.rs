@@ -72,8 +72,10 @@ async fn errors_and_blank_lines_do_not_end_the_session() {
     );
 }
 
+/// EOF (Ctrl-D) ends the prompt's line, so the shell starts on a fresh one.
 #[tokio::test]
-async fn prompt_comes_before_each_line() {
+async fn prompt_comes_before_each_line_and_eof_ends_its_line() {
     let output = session_with_prompt("SET a x\n\nGET a\n", true).await;
-    assert_eq!(output, "> OK\n> > x\n> ");
+    assert_eq!(output, "> OK\n> > x\n> \n");
+    assert_eq!(session_with_prompt("EXIT\n", true).await, "> ");
 }

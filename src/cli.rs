@@ -22,8 +22,9 @@ pub enum Error {
 /// Runs a session until `EXIT` or EOF, answering each line on `writer`.
 ///
 /// Invalid input is answered with `ERR <reason>` and the session continues; blank lines get
-/// no answer. With `prompt`, `> ` is written before each line is read. Returning drops
-/// `logic`, which lets the tasks below shut down.
+/// no answer. With `prompt`, `> ` is written before each line is read, and EOF ends that
+/// line so the shell starts on a fresh one. Returning drops `logic`, which lets the tasks
+/// below shut down.
 pub async fn run<R, W>(
     reader: R,
     mut writer: W,
@@ -45,11 +46,16 @@ where
         };
         let output = match protocol::parse(&line) {
             Ok(Input::Blank) => continue,
-            Ok(Input::Exit) => break,
+            Ok(Input::Exit) => return Ok(()),
             Ok(Input::Command(command)) => protocol::format(&logic.execute(command).await?),
             Err(error) => protocol::format_error(&error),
         };
         writer.write_all(output.as_bytes()).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+    }
+    // Only EOF gets here: end the prompt's line so the shell starts on a fresh one.
+    if prompt {
         writer.write_all(b"\n").await?;
         writer.flush().await?;
     }
