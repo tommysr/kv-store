@@ -2,27 +2,41 @@
 //!
 //! Requests arrive over a bounded `mpsc` channel and are handled one at a time, so each
 //! operation is atomic without any lock. Replies go back through the `oneshot` sender carried
-//! in the request.
+//! in the request. The operation semantics live in the synchronous `engine`, this module only
+//! moves requests to it and answers back.
 //!
 
-use std::collections::HashMap;
+mod engine;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-/// A message to the storage task. Each variant must carry the sender for its reply.
+use engine::Engine;
+
+/// a message to the storage task. each variant must carry the sender for its reply.
 #[derive(Debug)]
 pub enum Request {
-    /// Store `value` under `key`, overwriting any previous value.
+    /// store `value` under `key`, overwriting any previous value.
     Set {
         key: String,
         value: String,
         reply: oneshot::Sender<()>,
     },
-    /// Read the value under `key`, `None` if the key is missing.
+    /// read the value under `key`, `None` if the key is missing.
     Get {
         key: String,
         reply: oneshot::Sender<Option<String>>,
+    },
+    /// replace the value under an existing `key`, replies `false` if the key is missing.
+    Update {
+        key: String,
+        value: String,
+        reply: oneshot::Sender<bool>,
+    },
+    /// remove `key`, replies `false` if the key is missing.
+    Delete {
+        key: String,
+        reply: oneshot::Sender<bool>,
     },
 }
 
@@ -51,6 +65,17 @@ impl Handle {
         self.call(|reply| Request::Get { key, reply }).await
     }
 
+    /// Replaces the value under an existing `key`. Returns `false` if the key is missing.
+    pub async fn update(&self, key: String, value: String) -> Result<bool, Error> {
+        self.call(|reply| Request::Update { key, value, reply })
+            .await
+    }
+
+    /// Removes `key`. Returns `false` if the key is missing.
+    pub async fn delete(&self, key: String) -> Result<bool, Error> {
+        self.call(|reply| Request::Delete { key, reply }).await
+    }
+
     /// Sends a request built around a fresh reply channel and waits for the answer.
     async fn call<T>(
         &self,
@@ -74,18 +99,23 @@ pub fn spawn(capacity: usize) -> (Handle, JoinHandle<()>) {
 }
 
 async fn run(mut requests: mpsc::Receiver<Request>) {
-    let mut state = HashMap::new();
+    let mut engine = Engine::default();
 
     while let Some(request) = requests.recv().await {
+        // The requester may have given up waiting, so a failed reply is not an error here.
         match request {
             Request::Set { key, value, reply } => {
-                state.insert(key, value);
-                // The requester may have given up waiting, so a failed reply is not an error here.
+                engine.set(key, value);
                 let _ = reply.send(());
             }
             Request::Get { key, reply } => {
-                // The requester may have given up waiting, so a failed reply is not an error here.
-                let _ = reply.send(state.get(&key).cloned());
+                let _ = reply.send(engine.get(&key).map(str::to_owned));
+            }
+            Request::Update { key, value, reply } => {
+                let _ = reply.send(engine.update(&key, value));
+            }
+            Request::Delete { key, reply } => {
+                let _ = reply.send(engine.delete(&key));
             }
         }
     }
