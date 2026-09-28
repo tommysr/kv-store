@@ -126,3 +126,33 @@ async fn run(mut requests: mpsc::Receiver<Request>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// A caller that stops waiting (e.g. cancelled by a timeout) must not stop the task.
+    #[tokio::test]
+    async fn keeps_serving_after_a_caller_gives_up() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let (handle, task) = spawn(1);
+
+            let (reply, abandoned) = oneshot::channel();
+            drop(abandoned);
+            let key = "a".to_owned();
+            handle.tx.send(Request::Get { key, reply }).await.unwrap();
+
+            let (reply, answer) = oneshot::channel();
+            let key = "a".to_owned();
+            handle.tx.send(Request::Get { key, reply }).await.unwrap();
+            assert!(answer.await.is_ok(), "task stopped answering");
+
+            drop(handle);
+            task.await.unwrap();
+        })
+        .await
+        .expect("did not finish in time");
+    }
+}
