@@ -1,7 +1,6 @@
 //! Composition root: creates the channels and spawns the `kv` and `logic` tasks.
 //!
-//! Shared by `main` and the integration tests
-//!
+//! Shared by `main` and the integration tests.
 
 use tokio::task::JoinHandle;
 
@@ -10,7 +9,7 @@ use crate::{kv, logic};
 /// Settings for [`spawn`].
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Capacity of each request channel. Handles backpressure, when channel is full.
+    /// Capacity of each request channel. Senders wait while a channel is full (backpressure).
     pub channel_capacity: usize,
 }
 

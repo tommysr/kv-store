@@ -1,3 +1,6 @@
+//! Binary entry point: spawns the tasks, runs the CLI on stdin/stdout and waits for every
+//! task to finish, reporting task errors and panics.
+
 use anyhow::Context;
 use kv_store::{app, cli};
 use tokio::io::{BufReader, stdin, stdout};
