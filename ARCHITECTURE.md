@@ -1,13 +1,5 @@
 # Architecture
 
-```text
-               mpsc<logic::Request>                   mpsc<kv::Request>
-stdin  +-----------+ -----------------> +-------------+ ----------------> +--------------+
------> | cli task  |                    | logic task  |                   |   kv task    |
-<----- | protocol  | <----------------- | reverse()   | <---------------- | owns HashMap |
-stdout +-----------+ oneshot<Response>  +-------------+  oneshot<reply>   +--------------+
-```
-
 ## Tasks
 
 Three tokio tasks form a pipeline; dependencies go one way, `cli -> logic -> kv`. `app.rs`
