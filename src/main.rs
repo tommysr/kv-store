@@ -15,9 +15,15 @@ async fn main() -> anyhow::Result<()> {
 
     let cli_task = tokio::spawn(cli::run(BufReader::new(stdin()), stdout(), logic));
 
-    // EOF ends the CLI; the tasks below then end in cascade as their channels close.
-    cli_task.await.context("cli task panicked")??;
-    logic_task.await.context("logic task panicked")??;
-    kv_task.await.context("kv task panicked")?;
+    // EOF or EXIT ends the CLI; the tasks below then end in cascade as their channels close.
+    // Failure spreads upwards: when a task dies, the one above fails. So every task is awaited first,
+    // then the lowest failure is reported as the root cause. Be aware, that failures the root cause caused above
+    // are dropped. Consider handling this with eprintln or logger.
+    let cli = cli_task.await;
+    let logic = logic_task.await;
+    let kv = kv_task.await;
+    kv.context("kv task panicked")?;
+    logic.context("logic task panicked")??;
+    cli.context("cli task panicked")??;
     Ok(())
 }
