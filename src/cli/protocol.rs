@@ -13,12 +13,18 @@ pub enum ParseError {
     MissingKey,
     #[error("missing value")]
     MissingValue,
+    #[error("unexpected arguments")]
+    UnexpectedArguments,
 }
 
-/// Parses one input line: the command name, a single-token key, then the value if any.
-pub fn parse(line: &str) -> Result<Command, ParseError> {
+/// Parses one input line: the command name (any case), a single-token key, then the value
+/// if any. Returns `Ok(None)` for a blank line, which is not a command.
+pub fn parse(line: &str) -> Result<Option<Command>, ParseError> {
     let (name, args) = split_token(line);
-    let command = match name {
+    if name.is_empty() {
+        return Ok(None);
+    }
+    let command = match name.to_ascii_uppercase().as_str() {
         "SET" => {
             let (key, value) = key_and_value(args)?;
             Command::Set { key, value }
@@ -35,7 +41,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
         },
         _ => return Err(ParseError::UnknownCommand),
     };
-    Ok(command)
+    Ok(Some(command))
 }
 
 /// Formats a response as one output line, without the trailing newline.
@@ -52,9 +58,12 @@ pub fn format_error(error: &ParseError) -> String {
     format!("ERR {error}")
 }
 
-/// Arguments of a command that takes only a key.
+/// Arguments of a command that takes only a key; anything after it is rejected.
 fn key_only(args: &str) -> Result<String, ParseError> {
-    let (key, _) = split_key(args)?;
+    let (key, rest) = split_key(args)?;
+    if !rest.is_empty() {
+        return Err(ParseError::UnexpectedArguments);
+    }
     Ok(key)
 }
 
@@ -92,22 +101,45 @@ mod tests {
         Command::Set { key, value }
     }
 
+    fn get(key: &str) -> Command {
+        let key = key.to_owned();
+        Command::Get { key }
+    }
+
     fn update(key: &str, value: &str) -> Command {
         let (key, value) = (key.to_owned(), value.to_owned());
         Command::Update { key, value }
     }
 
+    fn delete(key: &str) -> Command {
+        let key = key.to_owned();
+        Command::Delete { key }
+    }
+
     #[test]
     fn parses_every_command() {
-        assert_eq!(parse("SET a v"), Ok(set("a", "v")));
-        assert_eq!(parse("GET a"), Ok(Command::Get { key: "a".into() }));
-        assert_eq!(parse("UPDATE a v"), Ok(update("a", "v")));
-        assert_eq!(parse("DELETE a"), Ok(Command::Delete { key: "a".into() }));
+        assert_eq!(parse("SET a v"), Ok(Some(set("a", "v"))));
+        assert_eq!(parse("GET a"), Ok(Some(get("a"))));
+        assert_eq!(parse("UPDATE a v"), Ok(Some(update("a", "v"))));
+        assert_eq!(parse("DELETE a"), Ok(Some(delete("a"))));
+    }
+
+    #[test]
+    fn command_names_are_case_insensitive_but_keys_and_values_are_not() {
+        assert_eq!(parse("set a v"), Ok(Some(set("a", "v"))));
+        assert_eq!(parse("Get a"), Ok(Some(get("a"))));
+        assert_eq!(parse("uPdAtE K V"), Ok(Some(update("K", "V"))));
     }
 
     #[test]
     fn value_is_the_rest_of_the_line_trimmed() {
-        assert_eq!(parse(" SET a  b  c "), Ok(set("a", "b  c")));
+        assert_eq!(parse(" SET a  b  c "), Ok(Some(set("a", "b  c"))));
+    }
+
+    #[test]
+    fn blank_lines_are_not_commands() {
+        assert_eq!(parse(""), Ok(None));
+        assert_eq!(parse(" \t "), Ok(None));
     }
 
     #[test]
@@ -117,6 +149,12 @@ mod tests {
         assert_eq!(parse("SET"), Err(ParseError::MissingKey));
         assert_eq!(parse("UPDATE a"), Err(ParseError::MissingValue));
         assert_eq!(parse("PUT a v"), Err(ParseError::UnknownCommand));
+    }
+
+    #[test]
+    fn rejects_arguments_after_a_key_only_command() {
+        assert_eq!(parse("GET a b"), Err(ParseError::UnexpectedArguments));
+        assert_eq!(parse("DELETE a b"), Err(ParseError::UnexpectedArguments));
     }
 
     #[test]
@@ -130,5 +168,9 @@ mod tests {
         );
         assert_eq!(format_error(&ParseError::MissingKey), "ERR missing key");
         assert_eq!(format_error(&ParseError::MissingValue), "ERR missing value");
+        assert_eq!(
+            format_error(&ParseError::UnexpectedArguments),
+            "ERR unexpected arguments"
+        );
     }
 }

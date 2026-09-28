@@ -45,3 +45,11 @@ async fn missing_key_answers_not_found_and_update_does_not_insert() {
         "NOT_FOUND\nNOT_FOUND\nNOT_FOUND\n"
     );
 }
+
+#[tokio::test]
+async fn errors_and_blank_lines_do_not_end_the_session() {
+    assert_eq!(
+        session("\nFOO\nget a\n  \nset a x\nGET a b\nGET a\n").await,
+        "ERR unknown command\nNOT_FOUND\nOK\nERR unexpected arguments\nx\n"
+    );
+}
