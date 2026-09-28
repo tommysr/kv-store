@@ -56,3 +56,21 @@ fn split_token(input: &str) -> (&str, &str) {
 fn non_empty(text: &str) -> Option<String> {
     (!text.is_empty()).then(|| text.to_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_strings_are_exact() {
+        assert_eq!(format(&Response::Ok), "OK");
+        assert_eq!(format(&Response::Value("olleh".to_owned())), "olleh");
+        assert_eq!(format(&Response::NotFound), "NOT_FOUND");
+        assert_eq!(
+            format_error(&ParseError::UnknownCommand),
+            "ERR unknown command"
+        );
+        assert_eq!(format_error(&ParseError::MissingKey), "ERR missing key");
+        assert_eq!(format_error(&ParseError::MissingValue), "ERR missing value");
+    }
+}
