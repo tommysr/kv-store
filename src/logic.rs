@@ -1,7 +1,8 @@
 //! Logic task: executes domain commands by turning them into storage requests.
 //!
-//! Owns the domain types [`Command`] and [`Response`]. Awaits each storage reply inline, so
-//! commands are processed one at a time in arrival order.
+//! Owns the domain types [`Command`] and [`Response`] and the domain rule that SET and UPDATE
+//! store the value reversed. Awaits each storage reply inline, so commands are processed one
+//! at a time in arrival order.
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -82,16 +83,24 @@ async fn run(mut requests: mpsc::Receiver<Request>, kv: kv::Handle) -> Result<()
 async fn execute(kv: &kv::Handle, command: Command) -> Result<Response, kv::Error> {
     Ok(match command {
         Command::Set { key, value } => {
-            kv.set(key, value).await?;
+            kv.set(key, reverse(&value)).await?;
             Response::Ok
         }
         Command::Get { key } => match kv.get(key).await? {
             Some(value) => Response::Value(value),
             None => Response::NotFound,
         },
-        Command::Update { key, value } => ok_or_not_found(kv.update(key, value).await?),
+        Command::Update { key, value } => ok_or_not_found(kv.update(key, reverse(&value)).await?),
         Command::Delete { key } => ok_or_not_found(kv.delete(key).await?),
     })
+}
+
+/// Reverses `value` character by character, as SET and UPDATE store it.
+///
+/// A character is a Unicode scalar value (`char`), so a grapheme cluster built from several
+/// scalars, such as an emoji with a skin-tone modifier, comes out with its parts reordered.
+fn reverse(value: &str) -> String {
+    value.chars().rev().collect()
 }
 
 /// Response to a write that applies only to an existing key.
@@ -100,5 +109,116 @@ fn ok_or_not_found(found: bool) -> Response {
         Response::Ok
     } else {
         Response::NotFound
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// Runs `command` through a logic task whose storage side is the test itself: `answer`
+    /// gets the one storage request the command causes and replies to it by hand.
+    async fn exchange(command: Command, answer: impl FnOnce(kv::Request)) -> Response {
+        let (kv_tx, mut kv_rx) = mpsc::channel(1);
+        let (logic, _) = spawn(kv::Handle::new(kv_tx), 1);
+        let storage = async move {
+            answer(kv_rx.recv().await.expect("no storage request"));
+        };
+        let both = async { tokio::join!(logic.execute(command), storage) };
+        let (response, ()) = tokio::time::timeout(Duration::from_secs(5), both)
+            .await
+            .expect("exchange did not finish");
+        response.expect("logic task failed")
+    }
+
+    #[tokio::test]
+    async fn set_stores_the_value_reversed() {
+        let command = Command::Set {
+            key: "a".into(),
+            value: "abc".into(),
+        };
+        let response = exchange(command, |request| match request {
+            kv::Request::Set { key, value, reply } => {
+                assert_eq!(key, "a");
+                assert_eq!(value, "cba");
+                reply.send(()).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Ok);
+    }
+
+    #[tokio::test]
+    async fn get_returns_the_stored_value_as_is() {
+        let command = Command::Get { key: "a".into() };
+        let response = exchange(command, |request| match request {
+            kv::Request::Get { key, reply } => {
+                assert_eq!(key, "a");
+                reply.send(Some("cba".into())).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Value("cba".into()));
+    }
+
+    #[tokio::test]
+    async fn update_stores_the_value_reversed_and_maps_a_missing_key() {
+        let command = Command::Update {
+            key: "a".into(),
+            value: "abc".into(),
+        };
+        let response = exchange(command, |request| match request {
+            kv::Request::Update { key, value, reply } => {
+                assert_eq!(key, "a");
+                assert_eq!(value, "cba");
+                reply.send(false).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::NotFound);
+    }
+
+    #[tokio::test]
+    async fn delete_maps_an_existing_key_to_ok() {
+        let command = Command::Delete { key: "a".into() };
+        let response = exchange(command, |request| match request {
+            kv::Request::Delete { key, reply } => {
+                assert_eq!(key, "a");
+                reply.send(true).unwrap();
+            }
+            other => panic!("unexpected storage request: {other:?}"),
+        })
+        .await;
+        assert_eq!(response, Response::Ok);
+    }
+
+    #[test]
+    fn reverse_ascii() {
+        assert_eq!(reverse("marcin"), "nicram");
+    }
+
+    #[test]
+    fn reverse_empty() {
+        assert_eq!(reverse(""), "");
+    }
+
+    #[test]
+    fn reverse_keeps_multibyte_characters_whole() {
+        assert_eq!(reverse("żółw"), "włóż");
+    }
+
+    #[test]
+    fn reverse_keeps_emoji_whole() {
+        assert_eq!(reverse("a🦀b"), "b🦀a");
+    }
+
+    #[test]
+    fn reverse_reorders_the_parts_of_a_grapheme_cluster() {
+        assert_eq!(reverse("\u{1F44D}\u{1F3FD}"), "\u{1F3FD}\u{1F44D}");
     }
 }

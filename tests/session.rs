@@ -33,9 +33,17 @@ async fn session(input: &str) -> String {
         .expect("session did not finish")
 }
 
+/// The example session from the task description, byte for byte.
 #[tokio::test]
-async fn set_then_get_returns_stored_value() {
-    assert_eq!(session("SET a hello\nGET a\n").await, "OK\nhello\n");
+async fn example_from_the_task() {
+    let input = "SET name marcin\n\
+                 GET name\n\
+                 UPDATE name rust\n\
+                 GET name\n\
+                 DELETE name\n\
+                 GET name\n";
+    let expected = "OK\nnicram\nOK\ntsur\nOK\nNOT_FOUND\n";
+    assert_eq!(session(input).await, expected);
 }
 
 #[tokio::test]
