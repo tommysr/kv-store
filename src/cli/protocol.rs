@@ -1,8 +1,19 @@
-//! Text protocol of the CLI: parses input lines into [`Command`]s and formats [`Response`]s.
+//! Text protocol of the CLI: parses input lines into [`Input`]s and formats [`Response`]s.
 //!
 //! Must NOT know how commands are executed or where state lives.
 
 use crate::logic::{Command, Response};
+
+/// What one input line asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Input {
+    /// A blank line gets no answer.
+    Blank,
+    /// `EXIT`: end the session.
+    Exit,
+    /// A command for the logic task.
+    Command(Command),
+}
 
 /// Why an input line is not a valid command.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -18,11 +29,11 @@ pub enum ParseError {
 }
 
 /// Parses one input line: the command name (any case), a single-token key, then the value
-/// if any. Returns `Ok(None)` for a blank line, which is not a command.
-pub fn parse(line: &str) -> Result<Option<Command>, ParseError> {
+/// if any.
+pub fn parse(line: &str) -> Result<Input, ParseError> {
     let (name, args) = split_token(line);
     if name.is_empty() {
-        return Ok(None);
+        return Ok(Input::Blank);
     }
     let command = match name.to_ascii_uppercase().as_str() {
         "SET" => {
@@ -39,9 +50,11 @@ pub fn parse(line: &str) -> Result<Option<Command>, ParseError> {
         "DELETE" => Command::Delete {
             key: key_only(args)?,
         },
+        "EXIT" if args.is_empty() => return Ok(Input::Exit),
+        "EXIT" => return Err(ParseError::UnexpectedArguments),
         _ => return Err(ParseError::UnknownCommand),
     };
-    Ok(Some(command))
+    Ok(Input::Command(command))
 }
 
 /// Formats a response as one output line, without the trailing newline.
@@ -96,50 +109,52 @@ fn non_empty(text: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn set(key: &str, value: &str) -> Command {
+    fn set(key: &str, value: &str) -> Input {
         let (key, value) = (key.to_owned(), value.to_owned());
-        Command::Set { key, value }
+        Input::Command(Command::Set { key, value })
     }
 
-    fn get(key: &str) -> Command {
+    fn get(key: &str) -> Input {
         let key = key.to_owned();
-        Command::Get { key }
+        Input::Command(Command::Get { key })
     }
 
-    fn update(key: &str, value: &str) -> Command {
+    fn update(key: &str, value: &str) -> Input {
         let (key, value) = (key.to_owned(), value.to_owned());
-        Command::Update { key, value }
+        Input::Command(Command::Update { key, value })
     }
 
-    fn delete(key: &str) -> Command {
+    fn delete(key: &str) -> Input {
         let key = key.to_owned();
-        Command::Delete { key }
+        Input::Command(Command::Delete { key })
     }
 
     #[test]
     fn parses_every_command() {
-        assert_eq!(parse("SET a v"), Ok(Some(set("a", "v"))));
-        assert_eq!(parse("GET a"), Ok(Some(get("a"))));
-        assert_eq!(parse("UPDATE a v"), Ok(Some(update("a", "v"))));
-        assert_eq!(parse("DELETE a"), Ok(Some(delete("a"))));
+        assert_eq!(parse("SET a v"), Ok(set("a", "v")));
+        assert_eq!(parse("GET a"), Ok(get("a")));
+        assert_eq!(parse("UPDATE a v"), Ok(update("a", "v")));
+        assert_eq!(parse("DELETE a"), Ok(delete("a")));
+        assert_eq!(parse("EXIT"), Ok(Input::Exit));
     }
 
     #[test]
     fn command_names_are_case_insensitive_but_keys_and_values_are_not() {
-        assert_eq!(parse("set a v"), Ok(Some(set("a", "v"))));
-        assert_eq!(parse("Get a"), Ok(Some(get("a"))));
-        assert_eq!(parse("uPdAtE K V"), Ok(Some(update("K", "V"))));
+        assert_eq!(parse("set a v"), Ok(set("a", "v")));
+        assert_eq!(parse("Get a"), Ok(get("a")));
+        assert_eq!(parse("uPdAtE K V"), Ok(update("K", "V")));
+        assert_eq!(parse("exit"), Ok(Input::Exit));
     }
 
     #[test]
     fn value_is_the_rest_of_the_line_trimmed() {
-        assert_eq!(parse(" SET a  b  c "), Ok(Some(set("a", "b  c"))));
+        assert_eq!(parse(" SET a  b  c "), Ok(set("a", "b  c")));
     }
 
     #[test]
     fn blank_lines_are_not_commands() {
-        assert_eq!(parse(""), Ok(None));
-        assert_eq!(parse(" \t "), Ok(None));
+        assert_eq!(parse(""), Ok(Input::Blank));
+        assert_eq!(parse(" \t "), Ok(Input::Blank));
     }
 
     #[test]
@@ -152,9 +167,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_arguments_after_a_key_only_command() {
+    fn rejects_arguments_after_a_key_only_command_or_exit() {
         assert_eq!(parse("GET a b"), Err(ParseError::UnexpectedArguments));
         assert_eq!(parse("DELETE a b"), Err(ParseError::UnexpectedArguments));
+        assert_eq!(parse("EXIT now"), Err(ParseError::UnexpectedArguments));
     }
 
     #[test]
