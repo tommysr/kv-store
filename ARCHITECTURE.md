@@ -91,5 +91,4 @@ pipeline adds.
   locking correctly), unbounded channels (no backpressure), a reply `mpsc` (needs request
   ids), `broadcast`/`watch` (fan-out and latest-value, not request and response).
 - **Limitations:** sequential logic, data in memory only, DELETE leaves no tombstone.
-- **Extensions:** pipelining in logic, Ctrl-C via a `CancellationToken`, and toward
-  replication: per-folder actors, tombstones for DELETE, version vectors to detect conflicts.
+- **Extensions:** pipelining in logic, Ctrl-C via a `CancellationToken`

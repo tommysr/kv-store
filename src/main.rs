@@ -19,9 +19,8 @@ async fn main() -> anyhow::Result<()> {
     let cli_task = tokio::spawn(cli::run(BufReader::new(stdin()), stdout(), logic, prompt));
 
     // EOF or EXIT ends the CLI; the tasks below then end in cascade as their channels close.
-    // Failure spreads upwards: when a task dies, the one above fails. So every task is awaited first,
-    // then the lowest failure is reported as the root cause. Be aware, that failures the root cause caused above
-    // are dropped. Consider handling this with eprintln or logger.
+    // A failure spreads upwards: when a task dies, the one above fails too. So await every task first,
+    // then report the deepest failure as the root cause. The follow error above are dropped on purpose here.
     let cli = cli_task.await;
     let logic = logic_task.await;
     let kv = kv_task.await;

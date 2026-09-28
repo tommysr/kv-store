@@ -3,7 +3,7 @@ name = "kv-store"
 version = "0.1.0"
 edition = "2024"
 # Min version with edition 2024
-rust-version = "1.85" 
+rust-version = "1.85"
 description = "In-memory key-value store build from tokio tasks, with communication over channels."
 
 [dependencies]

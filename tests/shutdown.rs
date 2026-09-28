@@ -52,7 +52,7 @@ async fn a_dead_kv_task_ends_the_session_with_an_error() {
     // The CLI stops at the first command instead of answering `ERR` for every line.
     assert!(matches!(result, Err(cli::Error::Logic(_))));
     assert!(output.is_empty());
-    // logic task should endi with kv error
+    // logic task should ends with kv error
     let logic_result = within_timeout(logic_task).await.unwrap();
     assert!(matches!(logic_result, Err(logic::Error::Kv(_))));
 }
