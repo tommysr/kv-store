@@ -37,3 +37,11 @@ async fn session(input: &str) -> String {
 async fn set_then_get_returns_stored_value() {
     assert_eq!(session("SET a hello\nGET a\n").await, "OK\nhello\n");
 }
+
+#[tokio::test]
+async fn missing_key_answers_not_found_and_update_does_not_insert() {
+    assert_eq!(
+        session("UPDATE a x\nDELETE a\nGET a\n").await,
+        "NOT_FOUND\nNOT_FOUND\nNOT_FOUND\n"
+    );
+}

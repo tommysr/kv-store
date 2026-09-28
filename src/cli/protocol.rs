@@ -17,15 +17,22 @@ pub enum ParseError {
 
 /// Parses one input line: the command name, a single-token key, then the value if any.
 pub fn parse(line: &str) -> Result<Command, ParseError> {
-    let (name, rest) = split_token(line);
-    let (key, value) = split_token(rest);
-    let key = non_empty(key).ok_or(ParseError::MissingKey);
+    let (name, args) = split_token(line);
     match name {
-        "SET" => Ok(Command::Set {
-            key: key?,
-            value: non_empty(value).ok_or(ParseError::MissingValue)?,
+        "SET" => {
+            let (key, value) = key_and_value(args)?;
+            Ok(Command::Set { key, value })
+        }
+        "GET" => Ok(Command::Get {
+            key: key_only(args)?,
         }),
-        "GET" => Ok(Command::Get { key: key? }),
+        "UPDATE" => {
+            let (key, value) = key_and_value(args)?;
+            Ok(Command::Update { key, value })
+        }
+        "DELETE" => Ok(Command::Delete {
+            key: key_only(args)?,
+        }),
         _ => Err(ParseError::UnknownCommand),
     }
 }
@@ -44,6 +51,20 @@ pub fn format_error(error: &ParseError) -> String {
     format!("ERR {error}")
 }
 
+/// Arguments of a command that takes only a key.
+fn key_only(args: &str) -> Result<String, ParseError> {
+    let (key, _) = split_token(args);
+    non_empty(key).ok_or(ParseError::MissingKey)
+}
+
+/// Arguments of a command that takes a key and a value: the value is the rest of the line.
+fn key_and_value(args: &str) -> Result<(String, String), ParseError> {
+    let (key, value) = split_token(args);
+    let key = non_empty(key).ok_or(ParseError::MissingKey)?;
+    let value = non_empty(value).ok_or(ParseError::MissingValue)?;
+    Ok((key, value))
+}
+
 /// Splits off the first whitespace-delimited token; the rest is returned trimmed.
 fn split_token(input: &str) -> (&str, &str) {
     let input = input.trim();
@@ -60,6 +81,38 @@ fn non_empty(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn set(key: &str, value: &str) -> Command {
+        let (key, value) = (key.to_owned(), value.to_owned());
+        Command::Set { key, value }
+    }
+
+    fn update(key: &str, value: &str) -> Command {
+        let (key, value) = (key.to_owned(), value.to_owned());
+        Command::Update { key, value }
+    }
+
+    #[test]
+    fn parses_every_command() {
+        assert_eq!(parse("SET a v"), Ok(set("a", "v")));
+        assert_eq!(parse("GET a"), Ok(Command::Get { key: "a".into() }));
+        assert_eq!(parse("UPDATE a v"), Ok(update("a", "v")));
+        assert_eq!(parse("DELETE a"), Ok(Command::Delete { key: "a".into() }));
+    }
+
+    #[test]
+    fn value_is_the_rest_of_the_line_trimmed() {
+        assert_eq!(parse(" SET a  b  c "), Ok(set("a", "b  c")));
+    }
+
+    #[test]
+    fn rejects_missing_arguments_and_unknown_commands() {
+        assert_eq!(parse("GET"), Err(ParseError::MissingKey));
+        assert_eq!(parse("DELETE"), Err(ParseError::MissingKey));
+        assert_eq!(parse("SET"), Err(ParseError::MissingKey));
+        assert_eq!(parse("UPDATE a"), Err(ParseError::MissingValue));
+        assert_eq!(parse("PUT a v"), Err(ParseError::UnknownCommand));
+    }
 
     #[test]
     fn output_strings_are_exact() {

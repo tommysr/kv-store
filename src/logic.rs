@@ -14,6 +14,8 @@ use crate::kv;
 pub enum Command {
     Set { key: String, value: String },
     Get { key: String },
+    Update { key: String, value: String },
+    Delete { key: String },
 }
 
 /// The outcome of a command. A missing key is a normal outcome, not an error.
@@ -88,5 +90,16 @@ async fn execute(kv: &kv::Handle, command: Command) -> Result<Response, kv::Erro
             Some(value) => Response::Value(value),
             None => Response::NotFound,
         },
+        Command::Update { key, value } => ok_or_not_found(kv.update(key, value).await?),
+        Command::Delete { key } => ok_or_not_found(kv.delete(key).await?),
     })
+}
+
+/// Response to a write that applies only to an existing key.
+fn ok_or_not_found(found: bool) -> Response {
+    if found {
+        Response::Ok
+    } else {
+        Response::NotFound
+    }
 }
