@@ -8,7 +8,7 @@ use std::time::Duration;
 use kv_store::{app, cli};
 
 /// Runs one CLI session over in-memory buffers and waits until every task has shut down.
-async fn run_session(input: &str) -> String {
+async fn run_session(input: &str, prompt: bool) -> String {
     let app::App {
         logic,
         logic_task,
@@ -16,7 +16,7 @@ async fn run_session(input: &str) -> String {
     } = app::spawn(app::Config::default());
 
     let mut output = Vec::new();
-    cli::run(input.as_bytes(), &mut output, logic)
+    cli::run(input.as_bytes(), &mut output, logic, prompt)
         .await
         .expect("cli session failed");
 
@@ -27,8 +27,13 @@ async fn run_session(input: &str) -> String {
     String::from_utf8(output).unwrap()
 }
 
+/// A session as with piped input: no prompt.
 async fn session(input: &str) -> String {
-    tokio::time::timeout(Duration::from_secs(5), run_session(input))
+    session_with_prompt(input, false).await
+}
+
+async fn session_with_prompt(input: &str, prompt: bool) -> String {
+    tokio::time::timeout(Duration::from_secs(5), run_session(input, prompt))
         .await
         .expect("session did not finish")
 }
@@ -65,4 +70,10 @@ async fn errors_and_blank_lines_do_not_end_the_session() {
         session("\nFOO\nget a\n  \nset a x\nGET a b\nGET a\n").await,
         "ERR unknown command\nNOT_FOUND\nOK\nERR unexpected arguments\nx\n"
     );
+}
+
+#[tokio::test]
+async fn prompt_comes_before_each_line() {
+    let output = session_with_prompt("SET a x\n\nGET a\n", true).await;
+    assert_eq!(output, "> OK\n> > x\n> ");
 }
