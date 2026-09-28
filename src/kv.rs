@@ -2,13 +2,16 @@
 //!
 //! Requests arrive over a bounded `mpsc` channel and are handled one at a time, so each
 //! operation is atomic without any lock. Replies go back through the `oneshot` sender carried
-//! in the request.
+//! in the request. The operation semantics live in the synchronous `engine`, this module only
+//! moves requests to it and answers back.
 //!
 
-use std::collections::HashMap;
+mod engine;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+
+use engine::Engine;
 
 /// A message to the storage task. Each variant must carry the sender for its reply.
 #[derive(Debug)]
@@ -74,18 +77,17 @@ pub fn spawn(capacity: usize) -> (Handle, JoinHandle<()>) {
 }
 
 async fn run(mut requests: mpsc::Receiver<Request>) {
-    let mut state = HashMap::new();
+    let mut engine = Engine::default();
 
     while let Some(request) = requests.recv().await {
+        // The requester may have given up waiting, so a failed reply is not an error here.
         match request {
             Request::Set { key, value, reply } => {
-                state.insert(key, value);
-                // The requester may have given up waiting, so a failed reply is not an error here.
+                engine.set(key, value);
                 let _ = reply.send(());
             }
             Request::Get { key, reply } => {
-                // The requester may have given up waiting, so a failed reply is not an error here.
-                let _ = reply.send(state.get(&key).cloned());
+                let _ = reply.send(engine.get(&key).map(str::to_owned));
             }
         }
     }
