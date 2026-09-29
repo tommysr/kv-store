@@ -110,23 +110,17 @@ tests/
 
 ## Use of AI tools
 
-I used AI in three steps:
+I used AI in three steps. First, I discussed the design with Claude in chat (actors
+versus a shared `Mutex`, where responsibilities belong, what to test, how it could grow),
+bringing my own requirements and declining proposals more complex than the task needed.
+The result was `CLAUDE.md`, with the architecture, the rules and my workflow: a tracer
+bullet through all the layers first, then small deliverables extending these layers,
+one PR each.
 
-First, I discussed the design with Claude in chat, starting with key-value store design
-in general before bringing in the task itself: actors versus a shared `Mutex`, where each
-responsibility belongs, what is worth testing, and how the architecture could grow toward
-a bigger system. I brought my own requirements and opinions to those discussions and
-declined proposals that got more complex than the task needed. The result was
-`CLAUDE.md`: the architecture, the semantics, the error rules, and my way of working: a
-tracer bullet through all the layers first, to check that the approach fits the problem,
-then small deliverables extending these layers, one PR each.
+Second, I gave Claude Code the raw task in plan mode, without `CLAUDE.md`, and compared
+its plan with mine. The two were very similar. I merged the best of both into a single
+`CLAUDE.md`.
 
-Second, to double-check the design, I gave Claude Code the raw task in plan mode, without
-`CLAUDE.md`, and compared its plan with mine. The two were very similar. I adopted a few of
-its ideas, corrected a few of its choices, and merged both into a single `CLAUDE.md`.
-
-Third, Claude Code implemented the plan one deliverable at a time, each on its own branch,
-test first where it made sense. After each step it stopped. I ran the checks, reviewed the
-diff, asked for changes where the code did not make sense, and often changed it before
-committing: adjusting code, removing unwanted code, and fixing places where the code
-or docs claimed more than they proved.
+Third, Claude Code implemented the plan one deliverable at a time. After each step I
+ran the checks, reviewed the diff, asked for changes where the code did not make sense,
+and often changed the code before committing.
